@@ -32,6 +32,14 @@ class ProductStatus(str, PyEnum):
     SOLD_OUT = "SOLD_OUT"
 
 
+class WalletTransactionType(str, PyEnum):
+    DEPOSIT = "DEPOSIT"
+    PURCHASE = "PURCHASE"
+    ADMIN_CREDIT = "ADMIN_CREDIT"
+    ADMIN_DEBIT = "ADMIN_DEBIT"
+    REFUND = "REFUND"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -61,7 +69,7 @@ class Product(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    quality: Mapped[str] = mapped_column(String(50), nullable=False)  # GOOD / PREMIUM
+    quality: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
@@ -80,3 +88,23 @@ class Product(Base):
 
     def __repr__(self) -> str:
         return f"<Product id={self.id} country={self.country} quality={self.quality} stock={self.stock}>"
+
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type: Mapped[WalletTransactionType] = mapped_column(Enum(WalletTransactionType), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    balance_before: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    balance_after: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<WalletTransaction id={self.id} type={self.type} amount={self.amount}>"
