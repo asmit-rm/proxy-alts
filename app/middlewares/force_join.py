@@ -38,6 +38,10 @@ class ForceJoinMiddleware(BaseMiddleware):
         if user.id in settings.owner_ids:
             return await handler(event, data)
 
+        # Allow the check membership button to pass
+        if isinstance(event, CallbackQuery) and event.data == "force_join:check":
+            return await handler(event, data)
+
         bot: Bot = data.get("bot")
         if not bot:
             return await handler(event, data)
@@ -58,10 +62,9 @@ class ForceJoinMiddleware(BaseMiddleware):
                 not_joined.append(channel)
 
         if not not_joined:
-            # Sab channels join kiye hue hain
             return await handler(event, data)
 
-        # Access deny + join buttons dikhao
+        # Access deny + join buttons
         text = (
             "🔒 <b>ACCESS REQUIRED</b>\n\n"
             "Please join all required channels to use the bot."
@@ -85,7 +88,10 @@ class ForceJoinMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             await event.answer(text, reply_markup=keyboard, parse_mode="HTML")
         elif isinstance(event, CallbackQuery):
-            await event.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            try:
+                await event.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                await event.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
             await event.answer()
 
         return None
