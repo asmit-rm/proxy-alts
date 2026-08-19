@@ -8,6 +8,7 @@ from aiogram.enums import ParseMode
 from app.database.database import init_db
 from app.handlers.start import router as start_router
 from app.handlers.shop import router as shop_router
+from app.handlers.wallet import router as wallet_router
 from app.middlewares.force_join import ForceJoinMiddleware
 from app.utils.logger import logger
 from config import settings
@@ -37,6 +38,7 @@ async def main() -> None:
     # Register routers
     dp.include_router(start_router)
     dp.include_router(shop_router)
+    dp.include_router(wallet_router)
 
     logger.info("Bot is running. Owner IDs: %s", settings.owner_ids)
 
