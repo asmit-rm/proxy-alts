@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -337,3 +338,148 @@ async def process_code(message: Message, state: FSMContext):
     )
 
     logger.info("Number logged in & stock updated: phone=%s product_id=%s", phone, product_id)
+
+# ==================== MANAGE INVENTORY ====================
+
+@router.callback_query(F.data == "admin:panel")
+async def admin_panel_callback(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        "🛠 <b>ADMIN PANEL</b>\n\nSelect an option:",
+        reply_markup=admin_panel_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:inventory")
+async def show_inventory(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(Product).order_by(Product.id.desc()))
+        products = list(result.scalars().all())
+
+    if not products:
+        text = "📦 <b>Inventory</b>\n\nNo products yet."
+        await callback.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Back", callback_data="admin:panel")]
+            ]),
+            parse_mode="HTML"
+        )
+    else:
+        text = "📦 <b>Manage Inventory</b>\n\nSelect a product:"
+        from app.keyboards.admin import inventory_list_keyboard
+        await callback.message.edit_text(
+            text,
+            reply_markup=inventory_list_keyboard(products),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:product:"))
+async def manage_product(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    product_id = int(callback.data.split(":")[2])
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(Product).where(Product.id == product_id))
+        product = result.scalar_one_or_none()
+
+    if not product:
+        await callback.answer("Product not found", show_alert=True)
+        return
+
+    text = (
+        f"📦 <b>Product #{product.id}</b>\n\n"
+        f"🌍 Country: <b>{product.country}</b>\n"
+        f"💎 Quality: <b>{product.quality}</b>\n"
+        f"📝 Name: <b>{product.name}</b>\n"
+        f"💰 Price: <b>{format_money(product.price)}</b>\n"
+        f"📦 Stock: <b>{product.stock}</b>\n"
+        f"Status: <b>{product.status.value}</b>"
+    )
+
+    from app.keyboards.admin import product_manage_keyboard
+    await callback.message.edit_text(
+        text,
+        reply_markup=product_manage_keyboard(product.id),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:add_number:"))
+async def start_add_number(callback: CallbackQuery, state: FSMContext):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    product_id = int(callback.data.split(":")[2])
+    await state.update_data(product_id=product_id)
+    await state.set_state(AddProductStates.waiting_number)
+
+    await callback.message.edit_text(
+        f"📱 <b>Send Number for login</b>\n\n"
+        f"Product ID: #{product_id}\n"
+        f"Example: <code>+916628652867</code>",
+        reply_markup=cancel_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:change_price:"))
+async def start_change_price(callback: CallbackQuery, state: FSMContext):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    product_id = int(callback.data.split(":")[2])
+    await state.update_data(product_id=product_id, action="change_price")
+    await state.set_state(AddProductStates.price)
+
+    await callback.message.edit_text(
+        f"💰 <b>Send new price</b>\n\nProduct ID: #{product_id}\nExample: <code>50</code>",
+        reply_markup=cancel_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:toggle:"))
+async def toggle_product(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    product_id = int(callback.data.split(":")[2])
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(Product).where(Product.id == product_id))
+        product = result.scalar_one_or_none()
+        if not product:
+            await callback.answer("Not found", show_alert=True)
+            return
+
+        if product.status == ProductStatus.ACTIVE:
+            product.status = ProductStatus.DISABLED
+            msg = "🔴 Product Disabled"
+        else:
+            product.status = ProductStatus.ACTIVE
+            msg = "🟢 Product Enabled"
+
+        await session.commit()
+
+    await callback.answer(msg, show_alert=True)
+    # Refresh view
+    callback.data = f"admin:product:{product_id}"
+    await manage_product(callback)
