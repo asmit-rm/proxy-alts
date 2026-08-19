@@ -504,3 +504,136 @@ async def toggle_product(callback: CallbackQuery):
     # Refresh view
     callback.data = f"admin:product:{product_id}"
     await manage_product(callback)
+
+# ==================== STATISTICS ====================
+
+@router.callback_query(F.data == "admin:stats")
+async def show_stats(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    async with async_session_maker() as session:
+        from app.database.models import User, Order, Payment, WalletTransaction, StockNumber
+        from sqlalchemy import func
+
+        total_users = (await session.execute(select(func.count(User.id)))).scalar() or 0
+        total_products = (await session.execute(select(func.count(Product.id)))).scalar() or 0
+        total_stock = (await session.execute(
+            select(func.count(StockNumber.id)).where(StockNumber.status == StockStatus.AVAILABLE)
+        )).scalar() or 0
+        total_orders = (await session.execute(select(func.count(Order.id)))).scalar() or 0
+        completed_orders = (await session.execute(
+            select(func.count(Order.id)).where(Order.status == OrderStatus.COMPLETED)
+        )).scalar() or 0
+        pending_payments = (await session.execute(
+            select(func.count(Payment.id)).where(Payment.status == PaymentStatus.PENDING)
+        )).scalar() or 0
+        revenue = (await session.execute(
+            select(func.coalesce(func.sum(Order.amount), 0)).where(Order.status == OrderStatus.COMPLETED)
+        )).scalar() or 0
+
+    text = (
+        f"📊 <b>STATISTICS</b>\n\n"
+        f"👥 Total Users: <b>{total_users}</b>\n"
+        f"📦 Products: <b>{total_products}</b>\n"
+        f"📱 Available Stock: <b>{total_stock}</b>\n"
+        f"🛒 Total Orders: <b>{total_orders}</b>\n"
+        f"✅ Completed: <b>{completed_orders}</b>\n"
+        f"💰 Revenue: <b>{format_money(revenue)}</b>\n"
+        f"⏳ Pending Payments: <b>{pending_payments}</b>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Back", callback_data="admin:panel")]
+        ]),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+# ==================== BROADCAST ====================
+
+class BroadcastStates(StatesGroup):
+    waiting_message = State()
+    confirm = State()
+
+
+@router.callback_query(F.data == "admin:broadcast")
+async def start_broadcast(callback: CallbackQuery, state: FSMContext):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    await state.set_state(BroadcastStates.waiting_message)
+    await callback.message.edit_text(
+        "📢 <b>Broadcast</b>\n\nSend the message you want to broadcast to all users:",
+        reply_markup=cancel_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(BroadcastStates.waiting_message)
+async def process_broadcast_message(message: Message, state: FSMContext):
+    if not is_owner(message.from_user.id):
+        return
+
+    await state.update_data(broadcast_text=message.text or message.caption)
+    await state.set_state(BroadcastStates.confirm)
+
+    await message.answer(
+        f"📢 <b>Preview:</b>\n\n{message.text or message.caption}\n\n"
+        f"Send this to all users?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🚀 SEND", callback_data="admin:broadcast_send"),
+                InlineKeyboardButton(text="❌ CANCEL", callback_data="admin:cancel"),
+            ]
+        ]),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "admin:broadcast_send")
+async def send_broadcast(callback: CallbackQuery, state: FSMContext):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    data = await state.get_data()
+    text = data.get("broadcast_text")
+    await state.clear()
+
+    if not text:
+        await callback.answer("No message", show_alert=True)
+        return
+
+    await callback.message.edit_text("⏳ Broadcasting...")
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(User.telegram_id))
+        user_ids = [row[0] for row in result.all()]
+
+    success = 0
+    failed = 0
+
+    for uid in user_ids:
+        try:
+            await callback.bot.send_message(uid, text, parse_mode="HTML")
+            success += 1
+        except Exception:
+            failed += 1
+
+    await callback.message.edit_text(
+        f"✅ <b>Broadcast Completed</b>\n\n"
+        f"🚀 Success: <b>{success}</b>\n"
+        f"❌ Failed: <b>{failed}</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Back", callback_data="admin:panel")]
+        ]),
+        parse_mode="HTML"
+    )
+    await callback.answer()
