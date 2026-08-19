@@ -9,12 +9,14 @@ from aiogram.fsm.state import State, StatesGroup
 from app.database.database import async_session_maker
 from app.database.models import Product, ProductStatus
 from app.keyboards.admin import admin_panel_keyboard, cancel_keyboard, confirm_product_keyboard
+from app.services.fulfillment import FulfillmentProvider
 from app.utils.validators import is_owner
 from app.utils.helpers import format_money
 from app.utils.logger import logger
 from config import settings
 
 router = Router(name="admin")
+fulfillment = FulfillmentProvider()
 
 
 class AddProductStates(StatesGroup):
@@ -22,7 +24,12 @@ class AddProductStates(StatesGroup):
     quality = State()
     name = State()
     price = State()
-    # Number login states will be added later
+    waiting_number = State()
+    waiting_code = State()
+
+
+# Temporary storage for client during login (in production use Redis)
+_login_clients = {}
 
 
 # ==================== /admin ====================
@@ -39,6 +46,16 @@ async def cmd_admin(message: Message):
 
 @router.callback_query(F.data == "admin:cancel")
 async def admin_cancel(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    phone = data.get("phone")
+    if phone and phone in _login_clients:
+        client = _login_clients.pop(phone, None)
+        if client:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
     await state.clear()
     await callback.message.edit_text(
         "🛠 <b>ADMIN PANEL</b>\n\nSelect an option:",
@@ -131,7 +148,6 @@ async def process_price(message: Message, state: FSMContext):
         return
 
     await state.update_data(price=str(price))
-
     data = await state.get_data()
 
     text = (
@@ -140,7 +156,7 @@ async def process_price(message: Message, state: FSMContext):
         f"💎 Quality: <b>{data['quality']}</b>\n"
         f"📝 Name: <b>{data['name']}</b>\n"
         f"💰 Price: <b>{format_money(price)}</b>\n\n"
-        f"Confirm to save. After saving you will add numbers one by one."
+        f"Confirm to save. After saving you will add numbers."
     )
 
     await message.answer(text, reply_markup=confirm_product_keyboard(), parse_mode="HTML")
@@ -165,7 +181,7 @@ async def save_product(callback: CallbackQuery, state: FSMContext):
             quality=data["quality"],
             name=data["name"],
             price=Decimal(data["price"]),
-            stock=0,  # Numbers will be added one by one
+            stock=0,
             status=ProductStatus.ACTIVE,
             created_by=callback.from_user.id,
         )
@@ -173,20 +189,134 @@ async def save_product(callback: CallbackQuery, state: FSMContext):
         await session.commit()
         await session.refresh(product)
 
-    await state.clear()
+    await state.update_data(product_id=product.id)
+    await state.set_state(AddProductStates.waiting_number)
 
     await callback.message.edit_text(
-        f"✅ <b>Product Saved!</b>\n\n"
-        f"Product ID: <code>#{product.id}</code>\n"
-        f"🌍 {product.country} | 💎 {product.quality}\n"
-        f"💰 {format_money(product.price)}\n\n"
-        f"Now you can add numbers to this product from Manage Inventory.\n"
-        f"(Number login system coming next)",
+        f"✅ <b>Product Saved!</b> (ID: #{product.id})\n\n"
+        f"📱 <b>Send Number for login</b>\n\n"
+        f"Example: <code>+916628652867</code>",
+        reply_markup=cancel_keyboard(),
         parse_mode="HTML"
     )
     await callback.answer("✅ Product saved")
 
-    logger.info(
-        "Product created: id=%s country=%s quality=%s price=%s by=%s",
-        product.id, product.country, product.quality, product.price, callback.from_user.id
-  )
+
+# ==================== NUMBER LOGIN FLOW ====================
+
+@router.message(AddProductStates.waiting_number)
+async def process_number(message: Message, state: FSMContext):
+    if not is_owner(message.from_user.id):
+        return
+
+    phone = message.text.strip()
+    if not phone.startswith("+"):
+        await message.answer("❌ Number must start with +\nExample: <code>+916628652867</code>", parse_mode="HTML")
+        return
+
+    await message.answer("⏳ Sending code request...")
+
+    try:
+        result = await fulfillment.start_login(phone)
+    except Exception as e:
+        logger.error("start_login error: %s", e)
+        await message.answer(f"❌ Failed to send code: {e}")
+        return
+
+    if result["status"] == "already_logged_in":
+        await message.answer("✅ This number is already logged in.")
+        # Increase stock
+        data = await state.get_data()
+        product_id = data.get("product_id")
+        async with async_session_maker() as session:
+            from sqlalchemy import select
+            result_db = await session.execute(select(Product).where(Product.id == product_id))
+            product = result_db.scalar_one_or_none()
+            if product:
+                product.stock += 1
+                product.fulfillment_reference = phone
+                await session.commit()
+        await message.answer(f"✅ Stock updated. Current stock increased by 1.")
+        await state.clear()
+        return
+
+    if result["status"] == "code_sent":
+        _login_clients[phone] = result["client"]
+        await state.update_data(
+            phone=phone,
+            phone_code_hash=result["phone_code_hash"]
+        )
+        await state.set_state(AddProductStates.waiting_code)
+
+        await message.answer(
+            f"🔐 <b>Send the code</b>\n\n"
+            f"Code sent to <code>{phone}</code>\n"
+            f"Please enter the login code:",
+            reply_markup=cancel_keyboard(),
+            parse_mode="HTML"
+        )
+
+
+@router.message(AddProductStates.waiting_code)
+async def process_code(message: Message, state: FSMContext):
+    if not is_owner(message.from_user.id):
+        return
+
+    code = message.text.strip()
+    data = await state.get_data()
+    phone = data.get("phone")
+    phone_code_hash = data.get("phone_code_hash")
+    product_id = data.get("product_id")
+
+    client = _login_clients.get(phone)
+    if not client:
+        await message.answer("❌ Session expired. Please start again.")
+        await state.clear()
+        return
+
+    await message.answer("⏳ Logging in...")
+
+    result = await fulfillment.complete_login(
+        client=client,
+        phone=phone,
+        code=code,
+        phone_code_hash=phone_code_hash,
+    )
+
+    _login_clients.pop(phone, None)
+
+    if result["status"] == "invalid_code":
+        await message.answer("❌ Invalid code. Try again or /admin to cancel.")
+        return
+
+    if result["status"] == "2fa_required":
+        await message.answer("❌ This number has 2FA enabled. Currently not supported.")
+        await state.clear()
+        return
+
+    if result["status"] != "success":
+        await message.answer(f"❌ Login failed: {result.get('message', 'Unknown error')}")
+        await state.clear()
+        return
+
+    # Success → increase stock + save reference
+    async with async_session_maker() as session:
+        from sqlalchemy import select
+        result_db = await session.execute(select(Product).where(Product.id == product_id))
+        product = result_db.scalar_one_or_none()
+        if product:
+            product.stock += 1
+            product.fulfillment_reference = phone
+            await session.commit()
+
+    await state.clear()
+
+    await message.answer(
+        f"✅ <b>Number/Session Saved</b>\n\n"
+        f"📱 Number: <code>{phone}</code>\n"
+        f"📦 Product ID: #{product_id}\n"
+        f"Ready for selling!",
+        parse_mode="HTML"
+    )
+
+    logger.info("Number logged in & stock updated: phone=%s product_id=%s", phone, product_id)
