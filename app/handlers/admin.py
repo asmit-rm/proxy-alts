@@ -5,9 +5,10 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy import select
 
 from app.database.database import async_session_maker
-from app.database.models import Product, ProductStatus
+from app.database.models import Product, ProductStatus, StockNumber, StockStatus
 from app.keyboards.admin import admin_panel_keyboard, cancel_keyboard, confirm_product_keyboard
 from app.services.fulfillment import FulfillmentProvider
 from app.utils.validators import is_owner
@@ -28,11 +29,8 @@ class AddProductStates(StatesGroup):
     waiting_code = State()
 
 
-# Temporary storage for client during login (in production use Redis)
 _login_clients = {}
 
-
-# ==================== /admin ====================
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
@@ -64,8 +62,6 @@ async def admin_cancel(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer("Cancelled")
 
-
-# ==================== ADD PRODUCT FLOW ====================
 
 @router.callback_query(F.data == "admin:add_product")
 async def start_add_product(callback: CallbackQuery, state: FSMContext):
@@ -202,8 +198,6 @@ async def save_product(callback: CallbackQuery, state: FSMContext):
     await callback.answer("✅ Product saved")
 
 
-# ==================== NUMBER LOGIN FLOW ====================
-
 @router.message(AddProductStates.waiting_number)
 async def process_number(message: Message, state: FSMContext):
     if not is_owner(message.from_user.id):
@@ -224,19 +218,33 @@ async def process_number(message: Message, state: FSMContext):
         return
 
     if result["status"] == "already_logged_in":
-        await message.answer("✅ This number is already logged in.")
-        # Increase stock
+        # Already has session → just add to stock
         data = await state.get_data()
         product_id = data.get("product_id")
+
         async with async_session_maker() as session:
-            from sqlalchemy import select
+            stock = StockNumber(
+                product_id=product_id,
+                phone=phone,
+                status=StockStatus.AVAILABLE,
+                session_file=str(fulfillment._get_session_path(phone)),
+            )
+            session.add(stock)
+
             result_db = await session.execute(select(Product).where(Product.id == product_id))
             product = result_db.scalar_one_or_none()
             if product:
                 product.stock += 1
-                product.fulfillment_reference = phone
-                await session.commit()
-        await message.answer(f"✅ Stock updated. Current stock increased by 1.")
+                if product.status == ProductStatus.SOLD_OUT:
+                    product.status = ProductStatus.ACTIVE
+
+            await session.commit()
+
+        await message.answer(
+            f"✅ Number already logged in & added to stock.\n"
+            f"📱 <code>{phone}</code>\n"
+            f"Stock increased by 1."
+        )
         await state.clear()
         return
 
@@ -286,7 +294,7 @@ async def process_code(message: Message, state: FSMContext):
     _login_clients.pop(phone, None)
 
     if result["status"] == "invalid_code":
-        await message.answer("❌ Invalid code. Try again or /admin to cancel.")
+        await message.answer("❌ Invalid code. Try again or cancel.")
         return
 
     if result["status"] == "2fa_required":
@@ -299,15 +307,24 @@ async def process_code(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Success → increase stock + save reference
+    # Success → create StockNumber + increase stock
     async with async_session_maker() as session:
-        from sqlalchemy import select
+        stock = StockNumber(
+            product_id=product_id,
+            phone=phone,
+            status=StockStatus.AVAILABLE,
+            session_file=result.get("session_file"),
+        )
+        session.add(stock)
+
         result_db = await session.execute(select(Product).where(Product.id == product_id))
         product = result_db.scalar_one_or_none()
         if product:
             product.stock += 1
-            product.fulfillment_reference = phone
-            await session.commit()
+            if product.status == ProductStatus.SOLD_OUT:
+                product.status = ProductStatus.ACTIVE
+
+        await session.commit()
 
     await state.clear()
 
