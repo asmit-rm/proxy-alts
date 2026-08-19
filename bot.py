@@ -4,11 +4,13 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.database.database import init_db
 from app.handlers.start import router as start_router
 from app.handlers.shop import router as shop_router
 from app.handlers.wallet import router as wallet_router
+from app.handlers.payments import router as payments_router
 from app.middlewares.force_join import ForceJoinMiddleware
 from app.utils.logger import logger
 from config import settings
@@ -17,7 +19,6 @@ from config import settings
 async def main() -> None:
     logger.info("Starting Proxy Manager bot...")
 
-    # Initialize database tables
     try:
         await init_db()
         logger.info("Database initialized successfully")
@@ -29,7 +30,9 @@ async def main() -> None:
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dp = Dispatcher()
+
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
 
     # Middlewares
     dp.message.middleware(ForceJoinMiddleware())
@@ -39,6 +42,7 @@ async def main() -> None:
     dp.include_router(start_router)
     dp.include_router(shop_router)
     dp.include_router(wallet_router)
+    dp.include_router(payments_router)
 
     logger.info("Bot is running. Owner IDs: %s", settings.owner_ids)
 
