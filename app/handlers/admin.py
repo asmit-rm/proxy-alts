@@ -144,6 +144,28 @@ async def process_price(message: Message, state: FSMContext):
         await message.answer("❌ Invalid price. Example: <code>24</code>", parse_mode="HTML")
         return
 
+    data = await state.get_data()
+
+    # Agar change price mode hai
+    if data.get("action") == "change_price":
+        product_id = data.get("product_id")
+        async with async_session_maker() as session:
+            result = await session.execute(select(Product).where(Product.id == product_id))
+            product = result.scalar_one_or_none()
+            if product:
+                product.price = price
+                await session.commit()
+
+        await state.clear()
+        await message.answer(
+            f"✅ Price updated!\n\n"
+            f"Product #{product_id}\n"
+            f"New Price: <b>{format_money(price)}</b>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Normal add product flow
     await state.update_data(price=str(price))
     data = await state.get_data()
 
@@ -157,8 +179,7 @@ async def process_price(message: Message, state: FSMContext):
     )
 
     await message.answer(text, reply_markup=confirm_product_keyboard(), parse_mode="HTML")
-
-
+    
 @router.callback_query(F.data == "admin:save_product")
 async def save_product(callback: CallbackQuery, state: FSMContext):
     if not is_owner(callback.from_user.id):
