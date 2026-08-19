@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -8,6 +9,8 @@ from app.database.models import (
     OrderStatus,
     Product,
     ProductStatus,
+    StockNumber,
+    StockStatus,
     User,
     WalletTransactionType,
 )
@@ -26,12 +29,13 @@ class OrderService:
     ) -> Order:
         """
         Atomic purchase:
-        - Lock product
+        - Lock product + available stock number
         - Check stock + active
         - Check balance
         - Deduct balance
+        - Assign one StockNumber
         - Create order
-        - Decrease stock
+        - Decrease product.stock
         """
         # Get user
         result = await self.session.execute(
@@ -58,6 +62,21 @@ class OrderService:
         if product.stock <= 0:
             raise ValueError("Out of stock")
 
+        # Get one available stock number with lock
+        result = await self.session.execute(
+            select(StockNumber)
+            .where(
+                StockNumber.product_id == product_id,
+                StockNumber.status == StockStatus.AVAILABLE,
+            )
+            .with_for_update()
+            .limit(1)
+        )
+        stock_number = result.scalar_one_or_none()
+
+        if not stock_number:
+            raise ValueError("Out of stock")
+
         if user.balance < product.price:
             raise ValueError("Insufficient balance")
 
@@ -70,7 +89,11 @@ class OrderService:
             reference_id=str(product.id),
         )
 
-        # Decrease stock
+        # Mark number as sold
+        stock_number.status = StockStatus.SOLD
+        stock_number.sold_at = datetime.now(timezone.utc)
+
+        # Decrease product stock
         product.stock -= 1
         if product.stock <= 0:
             product.status = ProductStatus.SOLD_OUT
@@ -83,9 +106,13 @@ class OrderService:
             quality=product.quality,
             product_name=product.name,
             amount=product.price,
-            status=OrderStatus.PENDING,
+            status=OrderStatus.COMPLETED,
+            fulfillment_data=stock_number.phone,
         )
         self.session.add(order)
+        await self.session.flush()  # get order.id
+
+        stock_number.order_id = order.id
 
         await self.session.commit()
         await self.session.refresh(order)
