@@ -40,6 +40,12 @@ class WalletTransactionType(str, PyEnum):
     REFUND = "REFUND"
 
 
+class PaymentStatus(str, PyEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -108,3 +114,23 @@ class WalletTransaction(Base):
 
     def __repr__(self) -> str:
         return f"<WalletTransaction id={self.id} type={self.type} amount={self.amount}>"
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    screenshot_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[PaymentStatus] = mapped_column(
+        Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False
+    )
+    reviewed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<Payment id={self.id} amount={self.amount} status={self.status}>"
