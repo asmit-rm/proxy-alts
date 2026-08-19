@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from app.database.database import async_session_maker
-from app.database.models import OrderStatus
+from app.database.models import OrderStatus, User
 from app.keyboards.wallet import insufficient_funds_keyboard
 from app.services.orders import OrderService
 from app.services.products import ProductService
@@ -10,6 +10,7 @@ from app.services.users import UserService
 from app.services.fulfillment import FulfillmentProvider
 from app.utils.helpers import format_money
 from app.utils.logger import logger
+from sqlalchemy import select
 
 router = Router(name="orders")
 fulfillment = FulfillmentProvider()
@@ -112,23 +113,10 @@ async def buy_product(callback: CallbackQuery):
             await callback.answer(f"❌ {error_msg}", show_alert=True)
             return
 
-        # Get product for fulfillment reference (number)
-        product_service = ProductService(session)
-        product = await product_service.get_product_by_id(product_id)
-        number = product.fulfillment_reference if product else None
-
         user_service = UserService(session)
         user = await user_service.get_user(callback.from_user.id)
 
-        # Update order with number + mark processing/completed
-        if number:
-            await order_service.update_order_status(
-                order_id=order.id,
-                status=OrderStatus.COMPLETED,
-                fulfillment_data=number,
-            )
-            order.status = OrderStatus.COMPLETED
-            order.fulfillment_data = number
+    number = order.fulfillment_data
 
     if number:
         text = (
@@ -149,7 +137,6 @@ async def buy_product(callback: CallbackQuery):
             f"💰 Paid: <b>{format_money(order.amount)}</b>\n"
             f"💳 Remaining Balance: <b>{format_money(user.balance)}</b>\n\n"
             f"📦 Order ID: <code>#{order.id}</code>\n"
-            f"Status: Pending\n\n"
             f"Your number is being prepared..."
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -174,9 +161,6 @@ async def send_code(callback: CallbackQuery):
             await callback.answer("❌ Number not found for this order", show_alert=True)
             return
 
-        # Security: only order owner can request code
-        from app.database.models import User
-        from sqlalchemy import select
         result = await session.execute(select(User).where(User.id == order.user_id))
         user = result.scalar_one_or_none()
         if not user or user.telegram_id != callback.from_user.id:
@@ -212,8 +196,6 @@ async def device_logout(callback: CallbackQuery):
             await callback.answer("❌ Number not found", show_alert=True)
             return
 
-        from app.database.models import User
-        from sqlalchemy import select
         result = await session.execute(select(User).where(User.id == order.user_id))
         user = result.scalar_one_or_none()
         if not user or user.telegram_id != callback.from_user.id:
@@ -226,6 +208,9 @@ async def device_logout(callback: CallbackQuery):
 
     if success:
         await callback.answer("✅ Device logged out", show_alert=True)
-        await callback.message.answer(f"🚪 Session for <code>{number}</code> has been logged out.", parse_mode="HTML")
+        await callback.message.answer(
+            f"🚪 Session for <code>{number}</code> has been logged out.",
+            parse_mode="HTML"
+        )
     else:
         await callback.answer("❌ Logout failed", show_alert=True)
