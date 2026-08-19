@@ -7,6 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.database.database import init_db
+from app.handlers.support import router as support_router
 from app.handlers.start import router as start_router
 from app.handlers.shop import router as shop_router
 from app.handlers.wallet import router as wallet_router
@@ -47,6 +48,7 @@ async def main() -> None:
     dp.include_router(payments_router)
     dp.include_router(orders_router)
     dp.include_router(admin_router)
+    dp.include_router(support_router)
 
     logger.info("Bot is running. Owner IDs: %s", settings.owner_ids)
 
