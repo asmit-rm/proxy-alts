@@ -54,6 +54,12 @@ class OrderStatus(str, PyEnum):
     REFUNDED = "REFUNDED"
 
 
+class StockStatus(str, PyEnum):
+    AVAILABLE = "AVAILABLE"
+    SOLD = "SOLD"
+    DISABLED = "DISABLED"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -63,19 +69,10 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
-    status: Mapped[UserStatus] = mapped_column(
-        Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False
-    )
+    status: Mapped[UserStatus] = mapped_column(Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    def __repr__(self) -> str:
-        return f"<User telegram_id={self.telegram_id} balance={self.balance}>"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class Product(Base):
@@ -88,20 +85,24 @@ class Product(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    status: Mapped[ProductStatus] = mapped_column(
-        Enum(ProductStatus), default=ProductStatus.ACTIVE, nullable=False
-    )
-    fulfillment_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[ProductStatus] = mapped_column(Enum(ProductStatus), default=ProductStatus.ACTIVE, nullable=False)
     created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    def __repr__(self) -> str:
-        return f"<Product id={self.id} country={self.country} quality={self.quality} stock={self.stock}>"
+
+class StockNumber(Base):
+    """Individual logged-in numbers available for sale"""
+    __tablename__ = "stock_numbers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    product_id: Mapped[int] = mapped_column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    status: Mapped[StockStatus] = mapped_column(Enum(StockStatus), default=StockStatus.AVAILABLE, nullable=False)
+    session_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    order_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("orders.id"), nullable=True)
 
 
 class WalletTransaction(Base):
@@ -116,12 +117,7 @@ class WalletTransaction(Base):
     reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    def __repr__(self) -> str:
-        return f"<WalletTransaction id={self.id} type={self.type} amount={self.amount}>"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class Payment(Base):
@@ -131,17 +127,10 @@ class Payment(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     screenshot_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    status: Mapped[PaymentStatus] = mapped_column(
-        Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False
-    )
+    status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
     reviewed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    def __repr__(self) -> str:
-        return f"<Payment id={self.id} amount={self.amount} status={self.status}>"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class Order(Base):
@@ -154,16 +143,7 @@ class Order(Base):
     quality: Mapped[str] = mapped_column(String(50), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False
-    )
-    fulfillment_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # number / session info
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    def __repr__(self) -> str:
-        return f"<Order id={self.id} status={self.status} amount={self.amount}>"
+    status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
+    fulfillment_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # phone number
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
