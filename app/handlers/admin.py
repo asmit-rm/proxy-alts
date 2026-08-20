@@ -641,3 +641,72 @@ async def send_broadcast(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML"
     )
     await callback.answer()
+
+# ==================== USERS ====================
+
+@router.callback_query(F.data == "admin:users")
+async def show_users(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).order_by(User.created_at.desc()).limit(20)
+        )
+        users = list(result.scalars().all())
+
+    if not users:
+        text = "👥 <b>Users</b>\n\nNo users yet."
+    else:
+        lines = ["👥 <b>Recent Users</b>\n"]
+        for u in users:
+            username = f"@{u.username}" if u.username else "—"
+            lines.append(
+                f"<code>{u.telegram_id}</code> | {username}\n"
+                f"Balance: {format_money(u.balance)} | {u.status.value}"
+            )
+        text = "\n\n".join(lines)
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Back", callback_data="admin:panel")]
+        ]),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+# ==================== PENDING PAYMENTS ====================
+
+@router.callback_query(F.data == "admin:payments")
+async def show_pending_payments(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(Payment)
+            .where(Payment.status == PaymentStatus.PENDING)
+            .order_by(Payment.created_at.desc())
+        )
+        payments = list(result.scalars().all())
+
+    if not payments:
+        text = "💰 <b>Pending Payments</b>\n\nNo pending payments."
+    else:
+        lines = ["💰 <b>Pending Payments</b>\n"]
+        for p in payments:
+            lines.append(f"#{p.id} | {format_money(p.amount)} | User ID: {p.user_id}")
+        text = "\n".join(lines)
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Back", callback_data="admin:panel")]
+        ]),
+        parse_mode="HTML"
+    )
+    await callback.answer()
