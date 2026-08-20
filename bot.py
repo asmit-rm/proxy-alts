@@ -7,13 +7,13 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.database.database import init_db
-from app.handlers.support import router as support_router
 from app.handlers.start import router as start_router
 from app.handlers.shop import router as shop_router
 from app.handlers.wallet import router as wallet_router
 from app.handlers.payments import router as payments_router
 from app.handlers.orders import router as orders_router
 from app.handlers.admin import router as admin_router
+from app.handlers.support import router as support_router
 from app.middlewares.force_join import ForceJoinMiddleware
 from app.utils.logger import logger
 from config import settings
