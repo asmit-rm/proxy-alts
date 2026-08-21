@@ -146,6 +146,21 @@ async def buy_product(callback: CallbackQuery):
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 
     await callback.answer("✅ Purchase successful!")
+# Owner ko sale notification
+    try:
+        notifier = NotificationService(callback.bot)
+        await notifier.notify_owners_new_sale(
+            order_id=order.id,
+            buyer_telegram_id=callback.from_user.id,
+            buyer_username=callback.from_user.username,
+            country=order.country,
+            quality=order.quality,
+            product_name=order.product_name,
+            number=order.fulfillment_data,
+            amount=order.amount,
+        )
+    except Exception as e:
+        logger.warning("Sale notification failed: %s", e)
     logger.info("Order created: order_id=%s user=%s product=%s", order.id, callback.from_user.id, product_id)
 
 
