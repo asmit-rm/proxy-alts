@@ -32,7 +32,7 @@ async def cmd_start(message: Message) -> None:
     store_status = "🟢 Store Status: Online"
 
     text = (
-        f"👋 Welcome to <b>Proxy Manager</b>!\n\n"
+        f"👋 Welcome to <b>TG ALT STORE</b>!\n\n"
         f"💳 Balance: <b>{balance_text}</b>\n"
         f"{store_status}"
     )
