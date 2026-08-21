@@ -65,7 +65,6 @@ async def deposit_info(callback: CallbackQuery):
         f"💳 <b>DEPOSIT</b>\n\n"
         f"UPI ID:\n<code>{settings.UPI_ID}</code>\n\n"
         f"Send payment and submit screenshot.\n"
-        f"(Deposit system coming in next stage)"
     )
 
     await callback.message.edit_text(text, reply_markup=deposit_keyboard(), parse_mode="HTML")
