@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
+from app.services.notifications import NotificationService
 from app.database.database import async_session_maker
 from app.database.models import OrderStatus, User
 from app.keyboards.wallet import insufficient_funds_keyboard
