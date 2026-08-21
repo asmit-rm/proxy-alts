@@ -33,7 +33,7 @@ async def start_deposit(callback: CallbackQuery, state: FSMContext):
     text = (
         f"💳 <b>DEPOSIT</b>\n\n"
         f"UPI ID:\n<code>{settings.UPI_ID}</code>\n\n"
-        f"1️⃣ Payment bhejo is UPI pe\n"
+        f"1️⃣ SEND PAYMENT IN THIS UPI\n"
         f"2️⃣ Payment ka <b>screenshot</b> bhejo"
     )
 
