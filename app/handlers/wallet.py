@@ -59,18 +59,6 @@ async def show_history(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "wallet:deposit")
-async def deposit_info(callback: CallbackQuery):
-    text = (
-        f"💳 <b>DEPOSIT</b>\n\n"
-        f"UPI ID:\n<code>{settings.UPI_ID}</code>\n\n"
-        f"Send payment and submit screenshot.\n"
-    )
-
-    await callback.message.edit_text(text, reply_markup=deposit_keyboard(), parse_mode="HTML")
-    await callback.answer()
-
-
 # ==================== OWNER COMMANDS ====================
 
 @router.message(Command("give"))
