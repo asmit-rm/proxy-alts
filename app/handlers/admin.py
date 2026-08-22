@@ -377,6 +377,7 @@ async def admin_panel_callback(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+
 @router.callback_query(F.data == "admin:inventory")
 async def show_inventory(callback: CallbackQuery):
     if not is_owner(callback.from_user.id):
@@ -384,11 +385,15 @@ async def show_inventory(callback: CallbackQuery):
         return
 
     async with async_session_maker() as session:
-        result = await session.execute(select(Product).order_by(Product.id.desc()))
+        result = await session.execute(
+            select(Product)
+            .where(Product.stock > 0)
+            .order_by(Product.id.desc())
+        )
         products = list(result.scalars().all())
 
     if not products:
-        text = "📦 <b>Inventory</b>\n\nNo products yet."
+        text = "📦 <b>Inventory</b>\n\nNo available stock right now."
         await callback.message.edit_text(
             text,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -397,7 +402,7 @@ async def show_inventory(callback: CallbackQuery):
             parse_mode="HTML"
         )
     else:
-        text = "📦 <b>Manage Inventory</b>\n\nSelect a product:"
+        text = "📦 <b>Manage Inventory</b>\n\nOnly products with stock are shown:"
         from app.keyboards.admin import inventory_list_keyboard
         await callback.message.edit_text(
             text,
@@ -405,24 +410,6 @@ async def show_inventory(callback: CallbackQuery):
             parse_mode="HTML"
         )
     await callback.answer()
-
-
-@router.callback_query(F.data.startswith("admin:product:"))
-async def manage_product(callback: CallbackQuery):
-    if not is_owner(callback.from_user.id):
-        await callback.answer("⛔ Owner only", show_alert=True)
-        return
-
-    product_id = int(callback.data.split(":")[2])
-
-    async with async_session_maker() as session:
-        result = await session.execute(select(Product).where(Product.id == product_id))
-        product = result.scalar_one_or_none()
-
-    if not product:
-        await callback.answer("Product not found", show_alert=True)
-        return
-
     text = (
         f"📦 <b>Product #{product.id}</b>\n\n"
         f"🌍 Country: <b>{product.country}</b>\n"
