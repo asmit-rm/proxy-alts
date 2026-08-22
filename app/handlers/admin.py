@@ -410,6 +410,24 @@ async def show_inventory(callback: CallbackQuery):
             parse_mode="HTML"
         )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:product:"))
+async def manage_product(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("⛔ Owner only", show_alert=True)
+        return
+
+    product_id = int(callback.data.split(":")[2])
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(Product).where(Product.id == product_id))
+        product = result.scalar_one_or_none()
+
+    if not product:
+        await callback.answer("Product not found", show_alert=True)
+        return
+
     text = (
         f"📦 <b>Product #{product.id}</b>\n\n"
         f"🌍 Country: <b>{product.country}</b>\n"
