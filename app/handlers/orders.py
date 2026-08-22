@@ -223,10 +223,13 @@ async def device_logout(callback: CallbackQuery):
     success = await fulfillment.logout(number)
 
     if success:
-        await callback.answer("✅ Device logged out", show_alert=True)
-        await callback.message.answer(
-            f"🚪 Session for <code>{number}</code> has been logged out.",
+        await callback.message.edit_text(
+            f"🚪 <b>Session Deleted</b>\n\n"
+            f"📱 Number: <code>{number}</code>\n"
+            f"📦 Order ID: <code>#{order_id}</code>\n\n"
+            f"Device logged out & session removed.",
             parse_mode="HTML"
         )
+        await callback.answer("✅ Session deleted", show_alert=True)
     else:
         await callback.answer("❌ Logout failed", show_alert=True)
