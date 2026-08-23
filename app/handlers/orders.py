@@ -67,11 +67,11 @@ async def show_orders(callback: CallbackQuery):
         text = "\n\n".join(lines)
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Back", callback_data="home")]
-    ])
+    [InlineKeyboardButton(text="🔙 Back", callback_data="home")]
+])
 
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
+await safe_edit(callback.message, text, keyboard)
+await callback.answer()
 
 
 @router.callback_query(F.data.startswith("shop:buy:"))
