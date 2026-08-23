@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     DATABASE_URL: str
     OWNER_IDS: str
+    SALES_LOG_CHAT_ID: str | None = None
 
     SUPPORT_USERNAME: str = "@revulet"
     FORCE_JOIN_1: str = "@proxydominates"
