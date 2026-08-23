@@ -3,19 +3,27 @@ from decimal import Decimal, InvalidOperation
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
 
 from app.database.database import async_session_maker
 from app.database.models import WalletTransactionType
-from app.keyboards.wallet import wallet_keyboard, deposit_keyboard
-from app.keyboards.home import home_keyboard
+from app.keyboards.wallet import wallet_keyboard
 from app.services.wallet import WalletService
-from app.services.users import UserService
 from app.utils.helpers import format_money
 from app.utils.validators import is_owner
 from app.utils.logger import logger
-from config import settings
 
 router = Router(name="wallet")
+
+
+async def safe_edit(message, text: str, reply_markup=None):
+    try:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    except TelegramBadRequest:
+        try:
+            await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode="HTML")
+        except TelegramBadRequest:
+            await message.answer(text, reply_markup=reply_markup, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "wallet:balance")
@@ -28,8 +36,7 @@ async def show_balance(callback: CallbackQuery):
         f"💳 <b>YOUR WALLET</b>\n\n"
         f"Balance: <b>{format_money(balance)}</b>"
     )
-
-    await callback.message.edit_text(text, reply_markup=wallet_keyboard(), parse_mode="HTML")
+    await safe_edit(callback.message, text, wallet_keyboard())
     await callback.answer()
 
 
@@ -55,11 +62,9 @@ async def show_history(callback: CallbackQuery):
             )
         text = "\n\n".join(lines)
 
-    await callback.message.edit_text(text, reply_markup=wallet_keyboard(), parse_mode="HTML")
+    await safe_edit(callback.message, text, wallet_keyboard())
     await callback.answer()
 
-
-# ==================== OWNER COMMANDS ====================
 
 @router.message(Command("give"))
 async def cmd_give(message: Message):
@@ -103,7 +108,6 @@ async def cmd_give(message: Message):
         parse_mode="HTML"
     )
 
-    # Notify user
     try:
         await message.bot.send_message(
             chat_id=target_id,
