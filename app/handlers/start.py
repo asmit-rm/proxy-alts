@@ -12,7 +12,6 @@ from config import settings
 
 router = Router(name="start")
 
-
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     if not message.from_user:
@@ -29,15 +28,27 @@ async def cmd_start(message: Message) -> None:
         )
 
     balance_text = format_money(db_user.balance)
-    store_status = "🟢 Store Status: Online"
 
     text = (
-        f"👋 Welcome to <b>TG ALT STORE</b>!\n\n"
+        f"👋 Welcome to <b>Proxy Manager</b>!\n\n"
         f"💳 Balance: <b>{balance_text}</b>\n"
-        f"{store_status}"
+        f"🟢 Store Status: Online\n\n"
+        f"📜 <b>Policy</b>\n"
+        f"• All sales are <b>final and non-refundable</b>.\n"
+        f"• If an account is frozen, banned, or limited — "
+        f"that is <b>not our responsibility</b>.\n"
+        f"• Refunds only in rare vital cases (admin decision). "
+        f"Normal cases = <b>no refund</b>.\n"
+        f"• Use accounts at your own risk."
     )
 
-    await message.answer(text, reply_markup=home_keyboard(), parse_mode="HTML")
+    # Welcome image + message
+    await message.answer_photo(
+        photo="https://files.catbox.moe/vc9lxz.jpg",
+        caption=text,
+        reply_markup=home_keyboard(),
+        parse_mode="HTML",
+    )
 
     if created:
         logger.info("New user registered: telegram_id=%s username=%s", user.id, user.username)
