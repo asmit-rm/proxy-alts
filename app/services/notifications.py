@@ -84,7 +84,7 @@ class NotificationService:
             f"📍 Region: {country}\n"
             f"📱 Number: <code>{masked or 'N/A'}</code>\n"
             f"⚡ Status: Verified & Delivered\n\n"
-            f"🤖 Always use the official bot"
+            f"🤖 Always use the @TeleVNumStorebot"
         )
 
         try:
