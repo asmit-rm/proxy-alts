@@ -121,11 +121,18 @@ async def buy_product(callback: CallbackQuery):
 
     if number:
         text = (
-            f"🎉 <b>Delivery Successful</b>\n\n"
-            f"📱 Number: <code>{number}</code>\n\n"
-            f"💰 Paid: <b>{format_money(order.amount)}</b>\n"
-            f"💳 Remaining Balance: <b>{format_money(user.balance)}</b>\n"
-            f"📦 Order ID: <code>#{order.id}</code>"
+    f"🎉 <b>Delivery Successful</b>\n\n"
+    f"📱 Number: <code>{number}</code>\n\n"
+    f"💰 Paid: <b>{format_money(order.amount)}</b>\n"
+    f"💳 Remaining: <b>{format_money(user.balance)}</b>\n"
+    f"📦 Order ID: <code>#{order.id}</code>\n\n"
+    f"⚠️ <b>IMPORTANT:</b> Please complete the login process before making any "
+    f"device/session changes. Changes made before successful login may result "
+    f"in loss of access and are <b>NOT eligible for refund</b>.\n\n"
+    f"<b>How to login:</b>\n"
+    f"1. Download <b>NiceGram</b> from Play Store\n"
+    f"2. Login using the provided number then use the send code button\n"
+    f"3. Complete the login process then use the device logout button must"
         )
         await callback.message.edit_text(
             text,
