@@ -30,7 +30,7 @@ async def cmd_start(message: Message) -> None:
     balance_text = format_money(db_user.balance)
 
     text = (
-        f"👋 Welcome to <b>Proxy Manager</b>!\n\n"
+        f"👋 Welcome to <b>TG ALT STORE</b>!\n\n"
         f"💳 Balance: <b>{balance_text}</b>\n"
         f"🟢 Store Status: Online\n\n"
         f"📜 <b>Policy</b>\n"
