@@ -38,31 +38,26 @@ class DepositStates(StatesGroup):
 # ============================================================
 
 QR_URL = "https://ucarecdn.com/667e6822-7a20-4368-a7e9-37cc0898d31f/"
+
 @router.callback_query(F.data == "wallet:deposit")
-async def start_deposit(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
-    await state.clear()
+async def start_deposit(callback: CallbackQuery, state: FSMContext):
     await state.set_state(DepositStates.waiting_screenshot)
 
     text = (
-        "💳 <b>DEPOSIT</b>\n\n"
+        f"💳 <b>DEPOSIT</b>\n\n"
         f"UPI ID:\n<code>{settings.UPI_ID}</code>\n\n"
-        "1️⃣ Send payment to this UPI\n"
-        "2️⃣ Send your <b>payment screenshot</b>\n\n"
-        "📸 Screenshot bhejne ke baad amount pucha jayega."
+        f"1️⃣ Scan QR / pay on this UPI\n"
+        f"2️⃣ Send payment <b>screenshot</b> here"
     )
 
-    await callback.message.edit_text(
-        text,
+    # Naya message with QR (photo start se conflict nahi hoga)
+    await callback.message.answer_photo(
+        photo=QR_URL,
+        caption=text,
         reply_markup=deposit_cancel_keyboard(),
         parse_mode="HTML",
     )
-
     await callback.answer()
-
-
 # ============================================================
 # RECEIVE SCREENSHOT
 # ============================================================
