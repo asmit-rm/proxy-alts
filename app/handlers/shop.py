@@ -12,9 +12,33 @@ from app.keyboards.shop import (
 from app.keyboards.home import home_keyboard
 from app.services.products import ProductService
 from app.utils.helpers import format_money
-from app.utils.logger import logger
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message
+from aiogram.exceptions import TelegramBadRequest
+
+from app.database.database import async_session_maker
+from app.keyboards.shop import (
+    countries_keyboard,
+    qualities_keyboard,
+    product_keyboard,
+    no_stock_keyboard,
+)
+from app.keyboards.home import home_keyboard
+from app.services.products import ProductService
+from app.utils.helpers import format_money
 
 router = Router(name="shop")
+
+
+async def safe_edit(message: Message, text: str, reply_markup=None):
+    """Works for both text messages and photo messages."""
+    try:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    except TelegramBadRequest:
+        try:
+            await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode="HTML")
+        except TelegramBadRequest:
+            await message.answer(text, reply_markup=reply_markup, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "shop:countries")
@@ -24,16 +48,14 @@ async def show_countries(callback: CallbackQuery):
         countries = await service.get_available_countries()
 
     if not countries:
-        text = "❌ No products available right now."
-        await callback.message.edit_text(text, reply_markup=no_stock_keyboard())
+        await safe_edit(callback.message, "❌ No products available right now.", no_stock_keyboard())
         await callback.answer()
         return
 
-    text = "🌍 <b>Select Country</b>"
-    await callback.message.edit_text(
-        text,
-        reply_markup=countries_keyboard(countries),
-        parse_mode="HTML"
+    await safe_edit(
+        callback.message,
+        "🌍 <b>Select Country</b>",
+        countries_keyboard(countries),
     )
     await callback.answer()
 
@@ -47,16 +69,18 @@ async def show_qualities(callback: CallbackQuery):
         qualities = await service.get_qualities_by_country(country)
 
     if not qualities:
-        text = f"❌ No stock available for <b>{country}</b>."
-        await callback.message.edit_text(text, reply_markup=no_stock_keyboard(), parse_mode="HTML")
+        await safe_edit(
+            callback.message,
+            f"❌ No stock available for <b>{country}</b>.",
+            no_stock_keyboard(),
+        )
         await callback.answer()
         return
 
-    text = f"💎 <b>Select Quality</b>\n\n🌍 Country: <b>{country}</b>"
-    await callback.message.edit_text(
-        text,
-        reply_markup=qualities_keyboard(country, qualities),
-        parse_mode="HTML"
+    await safe_edit(
+        callback.message,
+        f"💎 <b>Select Quality</b>\n\n🌍 Country: <b>{country}</b>",
+        qualities_keyboard(country, qualities),
     )
     await callback.answer()
 
@@ -72,12 +96,14 @@ async def show_products(callback: CallbackQuery):
         products = await service.get_products(country, quality)
 
     if not products:
-        text = f"❌ No products available for <b>{country}</b> - <b>{quality}</b>."
-        await callback.message.edit_text(text, reply_markup=no_stock_keyboard(), parse_mode="HTML")
+        await safe_edit(
+            callback.message,
+            f"❌ No products available for <b>{country}</b> - <b>{quality}</b>.",
+            no_stock_keyboard(),
+        )
         await callback.answer()
         return
 
-    # For now show first product (later we can show list if multiple)
     product = products[0]
 
     text = (
@@ -89,10 +115,10 @@ async def show_products(callback: CallbackQuery):
         f"📦 Stock: <b>{product.stock}</b>"
     )
 
-    await callback.message.edit_text(
+    await safe_edit(
+        callback.message,
         text,
-        reply_markup=product_keyboard(product.id, country, quality),
-        parse_mode="HTML"
+        product_keyboard(product.id, country, quality),
     )
     await callback.answer()
 
@@ -100,7 +126,6 @@ async def show_products(callback: CallbackQuery):
 @router.callback_query(F.data == "home")
 async def go_home(callback: CallbackQuery):
     from app.services.users import UserService
-    from app.utils.helpers import format_money
 
     async with async_session_maker() as session:
         service = UserService(session)
@@ -114,9 +139,5 @@ async def go_home(callback: CallbackQuery):
         f"🟢 Store Status: Online"
     )
 
-    try:
-        await callback.message.edit_text(text, reply_markup=home_keyboard(), parse_mode="HTML")
-    except TelegramBadRequest:
-        await callback.message.answer(text, reply_markup=home_keyboard(), parse_mode="HTML")
-
+    await safe_edit(callback.message, text, home_keyboard())
     await callback.answer()
