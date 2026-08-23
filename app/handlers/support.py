@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramBadRequest
 
 from config import settings
 
@@ -28,5 +29,12 @@ async def open_support(callback: CallbackQuery):
         ]
     )
 
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except TelegramBadRequest:
+        try:
+            await callback.message.edit_caption(caption=text, reply_markup=keyboard, parse_mode="HTML")
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
     await callback.answer()
