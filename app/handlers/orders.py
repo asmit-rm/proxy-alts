@@ -1,10 +1,8 @@
-# app/handlers/orders.py
-
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
+from sqlalchemy import select
 
-from app.services.notifications import NotificationService
 from app.database.database import async_session_maker
 from app.database.models import OrderStatus, User
 from app.keyboards.wallet import insufficient_funds_keyboard
@@ -12,17 +10,15 @@ from app.services.orders import OrderService
 from app.services.products import ProductService
 from app.services.users import UserService
 from app.services.fulfillment import FulfillmentProvider
+from app.services.notifications import NotificationService
 from app.utils.helpers import format_money
 from app.utils.logger import logger
-from sqlalchemy import select
 
 router = Router(name="orders")
 fulfillment = FulfillmentProvider()
 
 
-# ========== 🔥 SAFE EDIT FUNCTION ==========
 async def safe_edit(message, text: str, reply_markup=None):
-    """Edit message safely - falls back to caption or new message"""
     try:
         await message.edit_text(text, reply_markup=reply_markup, parse_mode="HTML")
     except TelegramBadRequest:
@@ -85,7 +81,6 @@ async def show_orders(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔙 Back", callback_data="home")]
     ])
 
-    # 🔥 FIXED: safe_edit use karo
     await safe_edit(callback.message, text, keyboard)
     await callback.answer()
 
@@ -119,11 +114,7 @@ async def buy_product(callback: CallbackQuery):
                     f"💰 Required: <b>{format_money(price)}</b>\n"
                     f"📉 Short: <b>{format_money(price - balance)}</b>"
                 )
-                await callback.message.edit_text(
-                    text,
-                    reply_markup=insufficient_funds_keyboard(),
-                    parse_mode="HTML"
-                )
+                await safe_edit(callback.message, text, insufficient_funds_keyboard())
                 await callback.answer()
                 return
 
@@ -140,21 +131,14 @@ async def buy_product(callback: CallbackQuery):
             f"🎉 <b>Delivery Successful</b>\n\n"
             f"📱 Number: <code>{number}</code>\n\n"
             f"💰 Paid: <b>{format_money(order.amount)}</b>\n"
-            f"💳 Remaining: <b>{format_money(user.balance)}</b>\n"
+            f"💳 Remaining Balance: <b>{format_money(user.balance)}</b>\n"
             f"📦 Order ID: <code>#{order.id}</code>\n\n"
-            f"⚠️ <b>IMPORTANT:</b> Please complete the login process before making any "
-            f"device/session changes. Changes made before successful login may result "
-            f"in loss of access and are <b>NOT eligible for refund</b>.\n\n"
             f"<b>How to login:</b>\n"
             f"1. Download <b>NiceGram</b> from Play Store\n"
-            f"2. Login using the provided number then use the send code button\n"
-            f"3. Complete the login process then use the device logout button must"
+            f"2. Login this number <b>only in NiceGram</b>\n"
+            f"3. Tap <b>Send Code</b> when OTP is needed"
         )
-        await callback.message.edit_text(
-            text,
-            reply_markup=delivery_keyboard(order.id),
-            parse_mode="HTML"
-        )
+        await safe_edit(callback.message, text, delivery_keyboard(order.id))
     else:
         text = (
             f"✅ <b>PURCHASE SUCCESSFUL</b>\n\n"
@@ -167,11 +151,8 @@ async def buy_product(callback: CallbackQuery):
             [InlineKeyboardButton(text="📦 My Orders", callback_data="orders:list")],
             [InlineKeyboardButton(text="🏠 Home", callback_data="home")],
         ])
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await safe_edit(callback.message, text, keyboard)
 
-    await callback.answer("✅ Purchase successful!")
-
-    # Owner ko sale notification
     try:
         notifier = NotificationService(callback.bot)
         await notifier.notify_owners_new_sale(
@@ -187,7 +168,11 @@ async def buy_product(callback: CallbackQuery):
     except Exception as e:
         logger.warning("Sale notification failed: %s", e)
 
-    logger.info("Order created: order_id=%s user=%s product=%s", order.id, callback.from_user.id, product_id)
+    await callback.answer("✅ Purchase successful!")
+    logger.info(
+        "Order created: order_id=%s user=%s product=%s",
+        order.id, callback.from_user.id, product_id
+    )
 
 
 @router.callback_query(F.data.startswith("delivery:code:"))
@@ -248,12 +233,12 @@ async def device_logout(callback: CallbackQuery):
     success = await fulfillment.logout(number)
 
     if success:
-        await callback.message.edit_text(
+        await safe_edit(
+            callback.message,
             f"🚪 <b>Session Deleted</b>\n\n"
             f"📱 Number: <code>{number}</code>\n"
             f"📦 Order ID: <code>#{order_id}</code>\n\n"
             f"Device logged out & session removed.",
-            parse_mode="HTML"
         )
         await callback.answer("✅ Session deleted", show_alert=True)
     else:
