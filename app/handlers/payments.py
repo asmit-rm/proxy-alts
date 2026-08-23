@@ -37,6 +37,7 @@ class DepositStates(StatesGroup):
 # START DEPOSIT
 # ============================================================
 
+QR_URL = "https://ucarecdn.com/667e6822-7a20-4368-a7e9-37cc0898d31f/"
 @router.callback_query(F.data == "wallet:deposit")
 async def start_deposit(
     callback: CallbackQuery,
