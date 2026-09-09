@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     SALES_LOG_CHAT_ID: str | None = None
 
     SUPPORT_USERNAME: str = "@revulet"
-    FORCE_JOIN_1: str = "@proxydominates"
+    FORCE_JOIN_1: str = "@plecxo"
     FORCE_JOIN_2: str = "@noruleclub"
     FORCE_JOIN_3: str = "@vnumrates"
     UPI_ID: str = "proxyfxc@pytes"
