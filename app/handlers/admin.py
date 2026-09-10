@@ -32,6 +32,7 @@ class AddProductStates(StatesGroup):
     price = State()
     waiting_number = State()
     waiting_code = State()
+    waiting_2fa = State()   # NEW
 
 
 _login_clients = {}
@@ -332,6 +333,21 @@ async def process_code(message: Message, state: FSMContext):
         await message.answer(f"❌ Login failed: {result.get('message', 'Unknown error')}")
         await state.clear()
         return
+        # Login OK → ab 2FA poocho
+    await state.update_data(
+        phone=phone,
+        session_file=result.get("session_file"),
+        product_id=product_id,
+    )
+    await state.set_state(AddProductStates.waiting_2fa)
+
+    await message.answer(
+        f"✅ Login successful: <code>{phone}</code>\n\n"
+        f"🔐 Ab <b>2FA password</b> bhejo.\n"
+        f"Agar 2FA nahi hai to <code>skip</code> likho.",
+        parse_mode="HTML",
+        reply_markup=cancel_keyboard(),
+    )
 
     # Success → create StockNumber + increase stock
     async with async_session_maker() as session:
