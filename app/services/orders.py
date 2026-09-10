@@ -100,14 +100,15 @@ class OrderService:
 
         # Create order
         order = Order(
-            user_id=user.id,
-            product_id=product.id,
-            country=product.country,
-            quality=product.quality,
-            product_name=product.name,
-            amount=product.price,
-            status=OrderStatus.COMPLETED,
-            fulfillment_data=stock_number.phone,
+    user_id=user.id,
+    product_id=product.id,
+    country=product.country,
+    quality=product.quality,
+    product_name=product.name,
+    amount=product.price,
+    status=OrderStatus.COMPLETED,
+    fulfillment_data=stock_number.phone,
+    twofa_password=stock_number.twofa_password,
         )
         self.session.add(order)
         await self.session.flush()  # get order.id
