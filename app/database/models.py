@@ -92,7 +92,6 @@ class Product(Base):
 
 
 class StockNumber(Base):
-    """Individual logged-in numbers available for sale"""
     __tablename__ = "stock_numbers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -100,6 +99,7 @@ class StockNumber(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     status: Mapped[StockStatus] = mapped_column(Enum(StockStatus), default=StockStatus.AVAILABLE, nullable=False)
     session_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    twofa_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     order_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("orders.id"), nullable=True)
