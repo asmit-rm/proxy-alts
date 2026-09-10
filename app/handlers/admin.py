@@ -28,6 +28,7 @@ from app.keyboards.admin import (
     product_manage_keyboard,
 )
 from app.services.fulfillment import FulfillmentProvider
+fulfillment = FulfillmentProvider()  # file top pe already ho to dubara mat
 from app.utils.validators import is_owner
 from app.utils.helpers import format_money
 from app.utils.logger import logger
