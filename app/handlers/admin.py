@@ -820,3 +820,51 @@ async def cmd_removeadmin(message: Message):
         await session.commit()
 
     await message.answer(f"✅ Admin removed: <code>{tid}</code>", parse_mode="HTML")
+    @router.message(Command("delsession"))
+async def cmd_delsession(message: Message):
+    if not message.from_user or not is_owner(message.from_user.id):
+        # baad mein admin check bhi laga denge
+        if not message.from_user:
+            return
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == message.from_user.id)
+            )
+            u = result.scalar_one_or_none()
+            if not u or not u.is_admin:
+                await message.answer("⛔ Access denied.")
+                return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) != 2:
+        await message.answer("Usage: /delsession +91xxxxxxxxxx")
+        return
+
+    phone = args[1].strip()
+    if not phone.startswith("+"):
+        await message.answer("❌ Number must start with +")
+        return
+
+    ok = await fulfillment.logout(phone)
+
+    # DB se bhi clean (optional)
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(StockNumber).where(StockNumber.phone == phone)
+        )
+        stock = result.scalar_one_or_none()
+        if stock:
+            stock.status = StockStatus.DISABLED
+            stock.session_file = None
+            await session.commit()
+
+    if ok:
+        await message.answer(
+            f"✅ Session deleted\n📱 <code>{phone}</code>\nFile + logout done.",
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer(
+            f"⚠️ Logout tried. Session file may already be removed.\n📱 <code>{phone}</code>",
+            parse_mode="HTML",
+        )
