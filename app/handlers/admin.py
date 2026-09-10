@@ -28,7 +28,6 @@ from app.keyboards.admin import (
     product_manage_keyboard,
 )
 from app.services.fulfillment import FulfillmentProvider
-fulfillment = FulfillmentProvider()  # file top pe already ho to dubara mat
 from app.utils.validators import is_owner
 from app.utils.helpers import format_money
 from app.utils.logger import logger
@@ -258,7 +257,10 @@ async def process_number(message: Message, state: FSMContext):
 
     phone = message.text.strip()
     if not phone.startswith("+"):
-        await message.answer("❌ Number must start with +\nExample: <code>+916628652867</code>", parse_mode="HTML")
+        await message.answer(
+            "❌ Number must start with +\nExample: <code>+916628652867</code>",
+            parse_mode="HTML",
+        )
         return
 
     await message.answer("⏳ Sending code request...")
@@ -328,11 +330,11 @@ async def process_code(message: Message, state: FSMContext):
         return
 
     if result["status"] == "2fa_required":
-        # Telegram cloud password during login — ask user to type it for Telethon sign-in later if needed
         await message.answer(
-            "⚠️ Is number pe Telegram 2FA ON hai.\n"
-            "Abhi inventory 2FA alag save hoga.\n"
-            "Pehle session complete karo / number pe 2FA off karke dubara try karo agar login fail ho.",
+            "⚠️ Is number pe Telegram login 2FA ON hai.\n"
+            "Inventory 2FA alag save hota hai.\n"
+            "Pehle number pe login 2FA off karke dubara try karo, "
+            "ya session complete karo."
         )
         await state.clear()
         return
@@ -342,7 +344,7 @@ async def process_code(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # SUCCESS → sirf 2FA poocho, stock abhi mat banao
+    # SUCCESS → 2FA poocho, stock abhi nahi
     await state.update_data(
         phone=phone,
         session_file=result.get("session_file"),
@@ -483,7 +485,9 @@ async def start_add_number(callback: CallbackQuery, state: FSMContext):
     await state.update_data(product_id=product_id)
     await state.set_state(AddProductStates.waiting_number)
     await callback.message.edit_text(
-        f"📱 <b>Send Number for login</b>\n\nProduct ID: #{product_id}\nExample: <code>+916628652867</code>",
+        f"📱 <b>Send Number for login</b>\n\n"
+        f"Product ID: #{product_id}\n"
+        f"Example: <code>+916628652867</code>",
         reply_markup=cancel_keyboard(),
         parse_mode="HTML",
     )
@@ -546,7 +550,9 @@ async def show_stats(callback: CallbackQuery):
         total_products = (await session.execute(select(func.count(Product.id)))).scalar() or 0
         total_stock = (
             await session.execute(
-                select(func.count(StockNumber.id)).where(StockNumber.status == StockStatus.AVAILABLE)
+                select(func.count(StockNumber.id)).where(
+                    StockNumber.status == StockStatus.AVAILABLE
+                )
             )
         ).scalar() or 0
         total_orders = (await session.execute(select(func.count(Order.id)))).scalar() or 0
@@ -593,6 +599,7 @@ async def start_broadcast(callback: CallbackQuery, state: FSMContext):
     if not is_owner(callback.from_user.id):
         await callback.answer("⛔ Owner only", show_alert=True)
         return
+
     await state.set_state(BroadcastStates.waiting_message)
     await callback.message.edit_text(
         "📢 <b>Broadcast</b>\n\nSend message to broadcast:",
@@ -606,6 +613,7 @@ async def start_broadcast(callback: CallbackQuery, state: FSMContext):
 async def process_broadcast_message(message: Message, state: FSMContext):
     if not is_owner(message.from_user.id):
         return
+
     await state.update_data(broadcast_text=message.text or message.caption)
     await state.set_state(BroadcastStates.confirm)
     await message.answer(
@@ -718,7 +726,7 @@ async def show_pending_payments(callback: CallbackQuery):
     await callback.answer()
 
 
-# ==================== /delsession /addadmin /removeadmin ====================
+# ==================== COMMANDS ====================
 
 @router.message(Command("delsession"))
 async def cmd_delsession(message: Message):
@@ -747,10 +755,13 @@ async def cmd_delsession(message: Message):
             await session.commit()
 
     if ok:
-        await message.answer(f"✅ Session deleted\n📱 <code>{phone}</code>", parse_mode="HTML")
+        await message.answer(
+            f"✅ Session deleted\n📱 <code>{phone}</code>\nFile + logout done.",
+            parse_mode="HTML",
+        )
     else:
         await message.answer(
-            f"⚠️ Logout attempted / file may already be gone\n📱 <code>{phone}</code>",
+            f"⚠️ Logout tried. Session file may already be removed.\n📱 <code>{phone}</code>",
             parse_mode="HTML",
         )
 
@@ -821,51 +832,3 @@ async def cmd_removeadmin(message: Message):
         await session.commit()
 
     await message.answer(f"✅ Admin removed: <code>{tid}</code>", parse_mode="HTML")
-    @router.message(Command("delsession"))
-async def cmd_delsession(message: Message):
-    if not message.from_user or not is_owner(message.from_user.id):
-        # baad mein admin check bhi laga denge
-        if not message.from_user:
-            return
-        async with async_session_maker() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == message.from_user.id)
-            )
-            u = result.scalar_one_or_none()
-            if not u or not u.is_admin:
-                await message.answer("⛔ Access denied.")
-                return
-
-    args = message.text.split(maxsplit=1)
-    if len(args) != 2:
-        await message.answer("Usage: /delsession +91xxxxxxxxxx")
-        return
-
-    phone = args[1].strip()
-    if not phone.startswith("+"):
-        await message.answer("❌ Number must start with +")
-        return
-
-    ok = await fulfillment.logout(phone)
-
-    # DB se bhi clean (optional)
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(StockNumber).where(StockNumber.phone == phone)
-        )
-        stock = result.scalar_one_or_none()
-        if stock:
-            stock.status = StockStatus.DISABLED
-            stock.session_file = None
-            await session.commit()
-
-    if ok:
-        await message.answer(
-            f"✅ Session deleted\n📱 <code>{phone}</code>\nFile + logout done.",
-            parse_mode="HTML",
-        )
-    else:
-        await message.answer(
-            f"⚠️ Logout tried. Session file may already be removed.\n📱 <code>{phone}</code>",
-            parse_mode="HTML",
-        )
