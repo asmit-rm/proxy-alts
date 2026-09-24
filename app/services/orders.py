@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,16 +26,6 @@ class OrderService:
         telegram_id: int,
         product_id: int,
     ) -> Order:
-        """
-        Atomic purchase:
-        - Lock product + available stock number
-        - Check stock + active
-        - Check balance
-        - Deduct balance
-        - Assign one StockNumber
-        - Create order
-        - Decrease product.stock
-        """
         # Get user
         result = await self.session.execute(
             select(User).where(User.telegram_id == telegram_id)
@@ -45,7 +34,7 @@ class OrderService:
         if not user:
             raise ValueError("User not found")
 
-        # Get product with lock
+        # Lock product
         result = await self.session.execute(
             select(Product)
             .where(Product.id == product_id)
@@ -62,7 +51,7 @@ class OrderService:
         if product.stock <= 0:
             raise ValueError("Out of stock")
 
-        # Get one available stock number with lock
+        # Lock one available number
         result = await self.session.execute(
             select(StockNumber)
             .where(
@@ -89,29 +78,29 @@ class OrderService:
             reference_id=str(product.id),
         )
 
-        # Mark number as sold
+        # Mark number sold
         stock_number.status = StockStatus.SOLD
         stock_number.sold_at = datetime.now(timezone.utc)
 
-        # Decrease product stock
+        # Decrease stock
         product.stock -= 1
         if product.stock <= 0:
             product.status = ProductStatus.SOLD_OUT
 
         # Create order
         order = Order(
-    user_id=user.id,
-    product_id=product.id,
-    country=product.country,
-    quality=product.quality,
-    product_name=product.name,
-    amount=product.price,
-    status=OrderStatus.COMPLETED,
-    fulfillment_data=stock_number.phone,
-    twofa_password=stock_number.twofa_password,
+            user_id=user.id,
+            product_id=product.id,
+            country=product.country,
+            quality=product.quality,
+            product_name=product.name,
+            amount=product.price,
+            status=OrderStatus.COMPLETED,
+            fulfillment_data=stock_number.phone,
+            twofa_password=stock_number.twofa_password,
         )
         self.session.add(order)
-        await self.session.flush()  # get order.id
+        await self.session.flush()
 
         stock_number.order_id = order.id
 
