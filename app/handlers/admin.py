@@ -380,21 +380,59 @@ async def process_2fa(message: Message, state: FSMContext):
         twofa = None
 
     async with async_session_maker() as session:
-        stock = StockNumber(
-            product_id=product_id,
-            phone=phone,
-            status=StockStatus.AVAILABLE,
-            session_file=session_file,
-            twofa_password=twofa,
+        # Already exists?
+        result = await session.execute(
+            select(StockNumber).where(StockNumber.phone == phone)
         )
-        session.add(stock)
+        stock = result.scalar_one_or_none()
 
-        result_db = await session.execute(select(Product).where(Product.id == product_id))
-        product = result_db.scalar_one_or_none()
-        if product:
-            product.stock += 1
-            if product.status == ProductStatus.SOLD_OUT:
-                product.status = ProductStatus.ACTIVE
+        was_available = bool(stock and stock.status == StockStatus.AVAILABLE)
+
+        if stock:
+            # Update existing row
+            old_product_id = stock.product_id
+            stock.product_id = product_id
+            stock.status = StockStatus.AVAILABLE
+            stock.session_file = session_file
+            stock.twofa_password = twofa
+            stock.sold_at = None
+            stock.order_id = None
+
+            # Old product stock adjust (if moved)
+            if old_product_id != product_id:
+                old_p = (
+                    await session.execute(select(Product).where(Product.id == old_product_id))
+                ).scalar_one_or_none()
+                if old_p and old_p.stock > 0 and was_available:
+                    old_p.stock -= 1
+                    if old_p.stock <= 0:
+                        old_p.status = ProductStatus.SOLD_OUT
+
+            product = (
+                await session.execute(select(Product).where(Product.id == product_id))
+            ).scalar_one_or_none()
+            if product and not was_available:
+                product.stock += 1
+                if product.status == ProductStatus.SOLD_OUT:
+                    product.status = ProductStatus.ACTIVE
+        else:
+            # New number
+            stock = StockNumber(
+                product_id=product_id,
+                phone=phone,
+                status=StockStatus.AVAILABLE,
+                session_file=session_file,
+                twofa_password=twofa,
+            )
+            session.add(stock)
+
+            product = (
+                await session.execute(select(Product).where(Product.id == product_id))
+            ).scalar_one_or_none()
+            if product:
+                product.stock += 1
+                if product.status == ProductStatus.SOLD_OUT:
+                    product.status = ProductStatus.ACTIVE
 
         await session.commit()
 
@@ -409,8 +447,7 @@ async def process_2fa(message: Message, state: FSMContext):
         f"Ready for selling!",
         parse_mode="HTML",
     )
-    logger.info("Stock saved phone=%s product_id=%s twofa=%s", phone, product_id, bool(twofa))
-
+    logger.info("Stock saved/updated phone=%s product_id=%s", phone, product_id)
 
 # ==================== INVENTORY ====================
 
